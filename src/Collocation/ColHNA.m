@@ -1,4 +1,4 @@
-function [v_N, GOA, colMatrix, colRHS, solveTime] = ColHNA(Operator, Vbasis, uinc, Gamma, varargin)
+function [v_N, GOA, colMatrix, colRHS, solveTime, Xstruct, OpPsiX, fX] = ColHNA(Operator, Vbasis, uinc, Gamma, varargin)
 %computes oversampled collocation projection using HNA basis/frame
 
     %surpress warnings about cleared data in parfor loop:
@@ -23,7 +23,7 @@ function [v_N, GOA, colMatrix, colRHS, solveTime] = ColHNA(Operator, Vbasis, uin
     standardBEMflag = false;
     standardQuadFlag = false;
     truncParam = 1e-8;
-    weighting = true;
+    weighting = false;  % better for polygons to be true.
     symmetry_trick = false;
     % -----------------------
     
@@ -124,19 +124,21 @@ function [v_N, GOA, colMatrix, colRHS, solveTime] = ColHNA(Operator, Vbasis, uin
         f = Operator.get_RHS_data(uinc{ui_});
         %construct Geometrical optics approximation on Gamma
         GOA{ui_}=GeometricalOpticsApprox(uinc{ui_},Gamma);
-        parfor m=1:numColPts % can be parfor
+        OpPsiX = zeros(numColPts, 1);
+        fX = zeros(numColPts, 1);
+        for m=1:numColPts % can be parfor
             fCopy = f;
             %with RHS data
             %colMatrix(m,:) = colMatrixCol;
-            fX = fCopy.eval(Xstruct(m).x,Xstruct(m).side);
+            fX(m) = fCopy.eval(Xstruct(m).x,Xstruct(m).side);
             if ~standardBEMflag
-               OpPsiX = 0;
+%                OpPsiX = 0;
                for GOAedge = GOA{ui_}.suppEdges
-                   OpPsiX = OpPsiX + RHSquad(Operator, GOA{ui_}.edgeComponent(GOAedge), GOAedge, Ystruct(m), Nquad);
+                   OpPsiX(m) = OpPsiX(m) + RHSquad(Operator, GOA{ui_}.edgeComponent(GOAedge), GOAedge, Ystruct(m), Nquad); 
                end
-               colRHS_(m)  = fX - (OpPsiX + Operator.Id(GOA{ui_}.edgeComponent(Xstruct(m).side),Xstruct(m).x));
+               colRHS_(m)  = fX(m) - (OpPsiX(m) + Operator.Id(GOA{ui_}.edgeComponent(Xstruct(m).side),Xstruct(m).x));
             else
-               colRHS_(m)  = fX;
+               colRHS_(m)  = fX(m);
             end
             if messageFlag
                 fprintf('\n\t%d/%d%',m,numColPts);
@@ -144,7 +146,6 @@ function [v_N, GOA, colMatrix, colRHS, solveTime] = ColHNA(Operator, Vbasis, uin
         end
         colRHS(:,ui_) = colRHS_;
     end
-    
     %now fill in any gaps in matrix which can be done by exploiting
     %symmetry in structure
     for m=1:numColPts
